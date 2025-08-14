@@ -46,7 +46,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libmcrypt-dev \
     libreadline-dev \
     default-mysql-client \
-    postgresql-client-15 \
+    postgresql-client-16 \
     inkscape \
     # Image processing libraries
     libpng-dev \
@@ -63,22 +63,15 @@ RUN a2enmod rewrite headers proxy proxy_fcgi setenvif
 RUN docker-php-ext-configure gd --with-freetype --with-jpeg
 RUN docker-php-ext-install pdo_mysql pdo_pgsql mysqli zip exif pcntl bcmath gd soap intl opcache
 
-RUN curl -L -o /tmp/imagick.tar.gz https://github.com/Imagick/imagick/archive/7088edc353f53c4bc644573a79cdcd67a726ae16.tar.gz \
- && tar --strip-components=1 -xf /tmp/imagick.tar.gz \
- && phpize \
- && ./configure \
- && make \
- && make install \
- && echo "extension=imagick.so" > /usr/local/etc/php/conf.d/ext-imagick.ini \
- && rm -rf /tmp/*
+RUN pecl install imagick xdebug  \
+    && docker-php-ext-enable imagick xdebug
 
-
-# Install vips extension for libvips (an other image library but faster)
 RUN pecl install vips \
     && docker-php-ext-enable vips
 
-RUN pecl install xdebug redis memcached mongodb \
-    && docker-php-ext-enable xdebug redis imagick memcached mongodb
+RUN pecl install redis memcached mongodb \
+    && docker-php-ext-enable redis memcached mongodb
+
 
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
