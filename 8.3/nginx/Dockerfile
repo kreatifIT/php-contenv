@@ -46,7 +46,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libmcrypt-dev \
     libreadline-dev \
     default-mysql-client \
-    postgresql-client-16 \
+    postgresql-client-17 \
     nginx \
     inkscape \
     # Image processing libraries
