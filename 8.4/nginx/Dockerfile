@@ -55,11 +55,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libfreetype6-dev \
     libmagickwand-dev \
     libvips-dev \
+    libftp-dev \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 RUN docker-php-ext-configure gd --with-freetype --with-jpeg
-RUN docker-php-ext-install pdo_mysql pdo_pgsql mysqli zip exif pcntl bcmath gd soap intl opcache
+RUN docker-php-ext-install pdo_mysql pdo_pgsql mysqli zip exif pcntl bcmath gd soap intl opcache ftp
 
 RUN pecl install imagick xdebug  \
     && docker-php-ext-enable imagick xdebug
