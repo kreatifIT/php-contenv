@@ -11,8 +11,16 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 SHELL ["/bin/bash","-o","pipefail","-c"]
 
+# Path to the common resources relative to the build context
+ARG DOCKER_RESOURCES_PATH=common
+
 # Core OS deps (includes dos2unix)
-COPY common/build/scripts/mani-docker-install-system-deps.sh /usr/local/bin/
+COPY ${DOCKER_RESOURCES_PATH}/build/scripts/mani-docker-install-system-deps.sh /usr/local/bin/
+
+# Generic project-specific hooks (defaults to an empty directory in the module)
+ARG PROJECT_BUILD_HOOKS_PATH=${DOCKER_RESOURCES_PATH}/build/hooks
+COPY ${PROJECT_BUILD_HOOKS_PATH}/ /usr/local/bin/project-build-hooks/
+
 RUN chmod +x /usr/local/bin/mani-docker-install-system-deps.sh \
  && mani-docker-install-system-deps.sh
 
@@ -55,9 +63,9 @@ ARG JS_RUNTIME_REQUIRE_YARN=false
 ARG JS_RUNTIME_REQUIRE_PNPM=false
 
 # Extension installers (same domain scripts you already have)
-COPY common/build/scripts/mani-php-ext-core.sh   /usr/local/bin/
-COPY common/build/scripts/mani-php-ext-db.sh     /usr/local/bin/
-COPY common/build/scripts/mani-php-ext-images.sh /usr/local/bin/
+COPY ${DOCKER_RESOURCES_PATH}/build/scripts/mani-php-ext-core.sh   /usr/local/bin/
+COPY ${DOCKER_RESOURCES_PATH}/build/scripts/mani-php-ext-db.sh     /usr/local/bin/
+COPY ${DOCKER_RESOURCES_PATH}/build/scripts/mani-php-ext-images.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/mani-php-ext-*.sh
 
 # Build-time passes
@@ -90,7 +98,7 @@ ENV PHP_EXT_INTL=${PHP_EXT_INTL} \
 RUN mani-php-ext-core.sh --build
 
 # JS runtimes
-COPY common/build/scripts/mani-docker-install-js-runtime.sh /usr/local/bin/
+COPY ${DOCKER_RESOURCES_PATH}/build/scripts/mani-docker-install-js-runtime.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/mani-docker-install-js-runtime.sh \
  && JS_RUNTIME_REQUIRE_NODE=${JS_RUNTIME_REQUIRE_NODE} \
     JS_RUNTIME_NODE_VERSION=${JS_RUNTIME_NODE_VERSION} \
@@ -127,11 +135,11 @@ RUN tar -C / -Jxpf /tmp/s6-overlay-noarch.tar.xz \
  && rm /tmp/s6-overlay-*.tar.xz
 
 # PHP conf + FrankenPHP (Caddyfile) + s6 services
-COPY common/runtime/configs/php/           /usr/local/etc/php/conf.d/
-COPY common/runtime/configs/frankenphp/    /etc/caddy/
-COPY common/runtime/s6/cont-init.d/         /etc/cont-init.d/
-COPY common/runtime/s6/cont-finish.d/       /etc/cont-finish.d/
-COPY common/runtime/s6/variants/frankenphp/services.d/ /etc/services.d/
+COPY ${DOCKER_RESOURCES_PATH}/runtime/configs/php/           /usr/local/etc/php/conf.d/
+COPY ${DOCKER_RESOURCES_PATH}/runtime/configs/frankenphp/    /etc/caddy/
+COPY ${DOCKER_RESOURCES_PATH}/runtime/s6/cont-init.d/         /etc/cont-init.d/
+COPY ${DOCKER_RESOURCES_PATH}/runtime/s6/cont-finish.d/       /etc/cont-finish.d/
+COPY ${DOCKER_RESOURCES_PATH}/runtime/s6/variants/frankenphp/services.d/ /etc/services.d/
 
 # Normalize EOLs and +x for s6
 RUN find /etc/cont-init.d /etc/cont-finish.d /etc/services.d -type f -exec dos2unix {} \; \
@@ -150,7 +158,7 @@ RUN mkdir -p /var/lib/caddy /etc/caddy \
  && chown -R www-data:www-data /var/lib/caddy || true
  
 # Healthcheck
-COPY common/runtime/healthchecks/healthcheck-frankenphp.sh /usr/local/bin/
+COPY ${DOCKER_RESOURCES_PATH}/runtime/healthchecks/healthcheck-frankenphp.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/healthcheck-frankenphp.sh
 HEALTHCHECK --interval=30s --timeout=5s --retries=5 CMD /usr/local/bin/healthcheck-frankenphp.sh || exit 1
 
@@ -204,9 +212,9 @@ ENV INSTALL_DB_PGSQL_CLIENT=${INSTALL_DB_PGSQL_CLIENT} \
     PHP_EXT_EXIF=${PHP_EXT_EXIF} \
     PHP_EXT_PCNTL=${PHP_EXT_PCNTL}
 
-COPY common/build/scripts/mani-php-ext-core.sh   /usr/local/bin/
-COPY common/build/scripts/mani-php-ext-db.sh     /usr/local/bin/
-COPY common/build/scripts/mani-php-ext-images.sh /usr/local/bin/
+COPY ${DOCKER_RESOURCES_PATH}/build/scripts/mani-php-ext-core.sh   /usr/local/bin/
+COPY ${DOCKER_RESOURCES_PATH}/build/scripts/mani-php-ext-db.sh     /usr/local/bin/
+COPY ${DOCKER_RESOURCES_PATH}/build/scripts/mani-php-ext-images.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/mani-php-ext-*.sh
 
 RUN mani-php-ext-db.sh --runtime
@@ -214,8 +222,8 @@ RUN mani-php-ext-images.sh --runtime
 RUN mani-php-ext-core.sh --runtime
 
 # Sanity tool + bash history timestamping
-COPY common/runtime/sanity/mani-sanity.sh /usr/local/bin/mani-sanity
-COPY common/runtime/profile/zz-history.sh  /etc/profile.d/zz-history.sh
+COPY ${DOCKER_RESOURCES_PATH}/runtime/sanity/mani-sanity.sh /usr/local/bin/mani-sanity
+COPY ${DOCKER_RESOURCES_PATH}/runtime/profile/zz-history.sh  /etc/profile.d/zz-history.sh
 RUN chmod +x /usr/local/bin/mani-sanity && chmod 644 /etc/profile.d/zz-history.sh \
  && printf '\n[ -r /etc/profile.d/zz-history.sh ] && . /etc/profile.d/zz-history.sh\n' >> /etc/bash.bashrc
 
@@ -229,11 +237,17 @@ COPY --from=build_tools /usr/local/ /usr/local/
 COPY --from=build_tools /etc/apt/sources.list.d/ /etc/apt/sources.list.d/
 COPY --from=composer /usr/bin/composer /usr/local/bin/composer
 
+# Install dependencies without scripts (prevents artisan errors)
 COPY composer.json composer.lock ./
+RUN composer install --no-dev --prefer-dist --no-interaction --no-scripts --no-autoloader
+
+# Copy application code
+COPY . .
+
+# Run final optimization and scripts
 RUN composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader \
  && rm /usr/local/bin/composer
 
-COPY . .
 ENTRYPOINT ["/init"]
 
 # ---------- Development ----------

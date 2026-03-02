@@ -5,8 +5,16 @@ ENV DEBIAN_FRONTEND=noninteractive \
     COMPOSER_ALLOW_SUPERUSER=1
 SHELL ["/bin/bash","-o","pipefail","-c"]
 
+# Path to the common resources relative to the build context
+ARG DOCKER_RESOURCES_PATH=common
+
 # Core OS deps (includes dos2unix)
-COPY common/build/scripts/mani-docker-install-system-deps.sh /usr/local/bin/
+COPY ${DOCKER_RESOURCES_PATH}/build/scripts/mani-docker-install-system-deps.sh /usr/local/bin/
+
+# Generic project-specific hooks (defaults to an empty directory in the module)
+ARG PROJECT_BUILD_HOOKS_PATH=${DOCKER_RESOURCES_PATH}/build/hooks
+COPY ${PROJECT_BUILD_HOOKS_PATH}/ /usr/local/bin/project-build-hooks/
+
 RUN chmod +x /usr/local/bin/mani-docker-install-system-deps.sh \
  && mani-docker-install-system-deps.sh
 
@@ -40,6 +48,7 @@ ARG PHP_EXT_GMP=true
 ARG PHP_EXT_BCMATH=true
 ARG PHP_EXT_EXIF=true
 ARG PHP_EXT_PCNTL=true
+ARG PHP_EXT_FTP=true
 
 # JS Runtimes
 ARG JS_RUNTIME_NODE_VERSION=22
@@ -51,9 +60,9 @@ ARG JS_RUNTIME_REQUIRE_PNPM=false
 
 
 # Domain scripts
-COPY common/build/scripts/mani-php-ext-core.sh   /usr/local/bin/
-COPY common/build/scripts/mani-php-ext-db.sh     /usr/local/bin/
-COPY common/build/scripts/mani-php-ext-images.sh /usr/local/bin/
+COPY ${DOCKER_RESOURCES_PATH}/build/scripts/mani-php-ext-core.sh   /usr/local/bin/
+COPY ${DOCKER_RESOURCES_PATH}/build/scripts/mani-php-ext-db.sh     /usr/local/bin/
+COPY ${DOCKER_RESOURCES_PATH}/build/scripts/mani-php-ext-images.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/mani-php-ext-*.sh
 
 # Build-time: DB stack (repos/clients, -dev, compile/pecl)
@@ -84,11 +93,12 @@ ENV PHP_EXT_INTL=${PHP_EXT_INTL} \
     PHP_EXT_BCMATH=${PHP_EXT_BCMATH} \
     PHP_EXT_EXIF=${PHP_EXT_EXIF} \
     PHP_EXT_PCNTL=${PHP_EXT_PCNTL} \
+    PHP_EXT_FTP=${PHP_EXT_FTP} \
     PHP_EXT_XDEBUG=${PHP_EXT_XDEBUG}
 RUN mani-php-ext-core.sh --build
 
 # JS runtimes
-COPY common/build/scripts/mani-docker-install-js-runtime.sh /usr/local/bin/
+COPY ${DOCKER_RESOURCES_PATH}/build/scripts/mani-docker-install-js-runtime.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/mani-docker-install-js-runtime.sh \
  && JS_RUNTIME_REQUIRE_NODE=${JS_RUNTIME_REQUIRE_NODE} \
     JS_RUNTIME_NODE_VERSION=${JS_RUNTIME_NODE_VERSION} \
@@ -129,13 +139,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends nginx \
  && rm -rf /var/lib/apt/lists/*
 
 # Configs + s6
-COPY common/runtime/configs/php/     /usr/local/etc/php/conf.d/
-COPY common/runtime/configs/nginx/nginx.conf  /etc/nginx/nginx.conf
-COPY common/runtime/configs/nginx/conf.d/     /etc/nginx/conf.d/
+COPY ${DOCKER_RESOURCES_PATH}/runtime/configs/php/     /usr/local/etc/php/conf.d/
+COPY ${DOCKER_RESOURCES_PATH}/runtime/configs/nginx/nginx.conf  /etc/nginx/nginx.conf
+COPY ${DOCKER_RESOURCES_PATH}/runtime/configs/nginx/conf.d/     /etc/nginx/conf.d/
 
-COPY common/runtime/s6/cont-init.d/   /etc/cont-init.d/
-COPY common/runtime/s6/cont-finish.d/ /etc/cont-finish.d/
-COPY common/runtime/s6/variants/nginx/services.d/ /etc/services.d/
+COPY ${DOCKER_RESOURCES_PATH}/runtime/s6/cont-init.d/   /etc/cont-init.d/
+COPY ${DOCKER_RESOURCES_PATH}/runtime/s6/cont-finish.d/ /etc/cont-finish.d/
+COPY ${DOCKER_RESOURCES_PATH}/runtime/s6/variants/nginx/services.d/ /etc/services.d/
 
 # Normalize EOLs and ensure +x for s6 scripts
 RUN find /etc/cont-init.d /etc/cont-finish.d /etc/services.d -type f -exec dos2unix {} \; \
@@ -145,15 +155,15 @@ RUN find /etc/cont-init.d /etc/cont-finish.d /etc/services.d -type f -exec dos2u
  && find /etc/services.d -type f -path '*/log/run' -exec chmod a+rx {} \;
 
 # Sanity check script + bash history
-COPY common/runtime/sanity/mani-sanity.sh /usr/local/bin/mani-sanity
-COPY common/runtime/profile/zz-history.sh  /etc/profile.d/zz-history.sh
+COPY ${DOCKER_RESOURCES_PATH}/runtime/sanity/mani-sanity.sh /usr/local/bin/mani-sanity
+COPY ${DOCKER_RESOURCES_PATH}/runtime/profile/zz-history.sh  /etc/profile.d/zz-history.sh
 RUN chmod +x /usr/local/bin/mani-sanity && chmod 644 /etc/profile.d/zz-history.sh \
  && printf '\n[ -r /etc/profile.d/zz-history.sh ] && . /etc/profile.d/zz-history.sh\n' >> /etc/bash.bashrc
 
 # Healthcheck
 ARG ENABLE_HEALTHCHECK=false
 ENV ENABLE_HEALTHCHECK=${ENABLE_HEALTHCHECK}
-COPY common/runtime/healthchecks/healthcheck-nginx.sh /usr/local/bin/
+COPY ${DOCKER_RESOURCES_PATH}/runtime/healthchecks/healthcheck-nginx.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/healthcheck-nginx.sh
 HEALTHCHECK --interval=30s --timeout=5s --retries=5 --start-period=10s \
   CMD bash -lc '[[ "${ENABLE_HEALTHCHECK}" == "true" ]] && /usr/local/bin/healthcheck-nginx.sh || exit 0'
@@ -185,6 +195,7 @@ ARG PHP_EXT_XSL=true
 ARG PHP_EXT_GMP=true
 ARG PHP_EXT_BCMATH=true
 ARG PHP_EXT_EXIF=true
+ARG PHP_EXT_FTP=true
 ARG PHP_EXT_PCNTL=true
 
 ENV INSTALL_DB_PGSQL_CLIENT=${INSTALL_DB_PGSQL_CLIENT} \
@@ -208,12 +219,13 @@ ENV INSTALL_DB_PGSQL_CLIENT=${INSTALL_DB_PGSQL_CLIENT} \
     PHP_EXT_GMP=${PHP_EXT_GMP} \
     PHP_EXT_BCMATH=${PHP_EXT_BCMATH} \
     PHP_EXT_EXIF=${PHP_EXT_EXIF} \
+    PHP_EXT_FTP=${PHP_EXT_FTP} \
     PHP_EXT_PCNTL=${PHP_EXT_PCNTL}
 
 # Copy domain scripts for runtime pass
-COPY common/build/scripts/mani-php-ext-core.sh   /usr/local/bin/
-COPY common/build/scripts/mani-php-ext-db.sh     /usr/local/bin/
-COPY common/build/scripts/mani-php-ext-images.sh /usr/local/bin/
+COPY ${DOCKER_RESOURCES_PATH}/build/scripts/mani-php-ext-core.sh   /usr/local/bin/
+COPY ${DOCKER_RESOURCES_PATH}/build/scripts/mani-php-ext-db.sh     /usr/local/bin/
+COPY ${DOCKER_RESOURCES_PATH}/build/scripts/mani-php-ext-images.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/mani-php-ext-*.sh
 
 # Runtime passes (only shared libs and ini toggles)
@@ -230,11 +242,17 @@ COPY --from=build_tools /usr/local/ /usr/local/
 COPY --from=build_tools /etc/apt/sources.list.d/ /etc/apt/sources.list.d/
 COPY --from=composer /usr/bin/composer /usr/local/bin/composer
 
+# Install dependencies without scripts (prevents artisan errors)
 COPY composer.json composer.lock ./
+RUN composer install --no-dev --prefer-dist --no-interaction --no-scripts --no-autoloader
+
+# Copy application code
+COPY . .
+
+# Run final optimization and scripts
 RUN composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader \
  && rm /usr/local/bin/composer
 
-COPY . .
 EXPOSE 80
 ENTRYPOINT ["/init"]
 
